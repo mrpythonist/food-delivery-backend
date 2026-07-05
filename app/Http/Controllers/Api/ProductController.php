@@ -19,7 +19,6 @@ class ProductController extends Controller
         ]);
 
         if ($request->filled('search')) {
-
             $query->where(
                 'name',
                 'like',
@@ -28,7 +27,6 @@ class ProductController extends Controller
         }
 
         if ($request->filled('category_id')) {
-
             $query->where(
                 'category_id',
                 $request->category_id
@@ -36,11 +34,20 @@ class ProductController extends Controller
         }
 
         if ($request->has('is_active')) {
-
             $query->where(
                 'is_active',
                 filter_var(
                     $request->is_active,
+                    FILTER_VALIDATE_BOOLEAN
+                )
+            );
+        }
+
+        if ($request->has('is_featured')) {
+            $query->where(
+                'is_featured',
+                filter_var(
+                    $request->is_featured,
                     FILTER_VALIDATE_BOOLEAN
                 )
             );

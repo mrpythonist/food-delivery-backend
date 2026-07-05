@@ -10,6 +10,16 @@ use Illuminate\Http\Request;
 
 class CartController extends Controller
 {
+    public function index(Request $request)
+    {
+        $carts = Cart::with(['customer', 'items.product', 'items.variant'])
+            ->whereHas('items')
+            ->where('updated_at', '<=', now()->subHours(24))
+            ->latest('updated_at')
+            ->paginate($request->integer('per_page', 15));
+
+        return $carts;
+    }
     public function show(Request $request)
     {
         $request->validate([
@@ -20,9 +30,9 @@ class CartController extends Controller
             'items.product',
             'items.variant'
         ])
-        ->firstOrCreate([
-            'customer_id' => $request->customer_id
-        ]);
+            ->firstOrCreate([
+                'customer_id' => $request->customer_id
+            ]);
 
         return response()->json([
             'cart' => $cart,
@@ -62,7 +72,6 @@ class CartController extends Controller
                 $item->unit_price;
 
             $item->save();
-
         } else {
 
             CartItem::create([

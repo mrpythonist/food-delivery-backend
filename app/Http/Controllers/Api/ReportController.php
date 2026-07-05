@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
-use App\Models\Product;
+use App\Models\Rider;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -68,47 +68,110 @@ class ReportController extends Controller
 
     public function dashboard()
     {
-        $orders = Order::query();
+        $cards = [
+            'today_orders' => Order::whereDate('placed_at', today())->count(),
 
-        $this->applyDateFilter(
-            $orders,
-            'placed_at'
-        );
+            'today_revenue' => Order::whereDate('placed_at', today())
+                ->where('payment_status', 'paid')
+                ->sum('total'),
+
+            'pending_orders' => Order::where('status', 'pending')->count(),
+
+            'online_riders' => Rider::where('is_online', true)->count(),
+        ];
+
+        $monthlySales = Order::selectRaw("
+            EXTRACT(MONTH FROM placed_at) as month,
+            COALESCE(SUM(total),0) as sales
+        ")
+            ->whereYear('placed_at', now()->year)
+            ->where('payment_status', 'paid')
+            ->groupByRaw('EXTRACT(MONTH FROM placed_at)')
+            ->pluck('sales', 'month');
+
+        $salesByMonth = [];
+
+        for ($month = 1; $month <= 12; $month++) {
+
+            $salesByMonth[] = [
+
+                'month' => date(
+                    'M',
+                    mktime(0, 0, 0, $month, 1)
+                ),
+
+                'sales' => (float) ($monthlySales[$month] ?? 0)
+            ];
+        }
+
+        $weekStart = now()->startOfWeek();
+        $weekEnd = now()->endOfWeek();
+
+        $weeklyIncome = Order::selectRaw("
+            EXTRACT(DOW FROM placed_at) as day,
+            COALESCE(SUM(total),0) as income
+        ")
+            ->whereBetween('placed_at', [$weekStart, $weekEnd])
+            ->where('payment_status', 'paid')
+            ->groupByRaw('EXTRACT(DOW FROM placed_at)')
+            ->pluck('income', 'day');
+
+        $days = [
+            1 => 'Mon',
+            2 => 'Tue',
+            3 => 'Wed',
+            4 => 'Thu',
+            5 => 'Fri',
+            6 => 'Sat',
+            0 => 'Sun'
+        ];
+
+        $incomeOverview = [];
+
+        foreach ($days as $index => $name) {
+
+            $incomeOverview[] = [
+
+                'day' => $name,
+
+                'income' => (float) ($weeklyIncome[$index] ?? 0)
+            ];
+        }
+
+        $latestOrders = Order::with([
+            'customer',
+            'items'
+        ])
+            ->latest('placed_at')
+            ->take(10)
+            ->get()
+            ->map(function ($order) {
+
+                return [
+
+                    'order_number' => $order->order_number,
+
+                    'placed_at' => $order->placed_at,
+
+                    'customer' => $order->customer?->first_name . " " . $order->customer?->last_name,
+
+                    'items' => $order->items->sum('quantity'),
+
+                    'status' => $order->status,
+
+                    'total' => (float) $order->total,
+                ];
+            });
 
         return [
 
-            'total_customers' => Customer::count(),
+            'cards' => $cards,
 
-            'total_products' => Product::count(),
+            'sales_by_month' => $salesByMonth,
 
-            'total_orders' => (clone $orders)->count(),
+            'income_overview' => $incomeOverview,
 
-            'pending_orders' => (clone $orders)
-                ->where('status', 'pending')
-                ->count(),
-
-            'completed_orders' => (clone $orders)
-                ->where('status', 'delivered')
-                ->count(),
-
-            'total_revenue' => (clone $orders)
-                ->where('status', 'delivered')
-                ->sum('total'),
-
-            'today_orders' => Order::whereDate(
-                'placed_at',
-                today()
-            )->count(),
-
-            'today_revenue' => Order::where(
-                'status',
-                'delivered'
-            )
-                ->whereDate(
-                    'placed_at',
-                    today()
-                )
-                ->sum('total'),
+            'latest_orders' => $latestOrders,
         ];
     }
 

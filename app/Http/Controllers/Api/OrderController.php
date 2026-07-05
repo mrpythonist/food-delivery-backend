@@ -15,7 +15,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreOrderRequest;
 use App\Http\Requests\UpdateOrderRequest;
 use App\Http\Requests\UpdateOrderStatusRequest;
-use App\Http\Requests\VerifyPaymentRequest;
+use App\Http\Requests\UpdateOrderPaymentRequest;
 use Illuminate\Validation\ValidationException;
 use App\Events\OrderPlaced;
 use App\Events\OrderConfirmed;
@@ -29,51 +29,60 @@ class OrderController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Order::with([
+        $orders = Order::with([
             'customer',
-            'address',
-            'items.product',
-            'items.variant',
+            'rider',
+            'items'
         ]);
 
         if ($request->filled('search')) {
-
             $search = $request->search;
-
-            $query->where(function ($q) use ($search) {
-
-                $q->where(
-                    'order_number',
-                    'like',
-                    "%{$search}%"
-                );
-
-                $q->orWhereHas('customer', function ($customerQuery) use ($search) {
-
-                    $customerQuery
-                        ->where('first_name', 'like', "%{$search}%")
-                        ->orWhere('last_name', 'like', "%{$search}%")
-                        ->orWhere('phone', 'like', "%{$search}%");
-                });
+            $orders->where(function ($query) use ($search) {
+                $query
+                    ->where('order_number', 'ILIKE', "%{$search}%")
+                    ->orWhereHas(
+                        'customer',
+                        fn($q) => $q
+                            ->where('first_name', 'ILIKE', "%{$search}%")
+                            ->orWhere('last_name', 'ILIKE', "%{$search}%")
+                            ->orWhere('phone', 'ILIKE', "%{$search}%")
+                    );
             });
         }
 
         if ($request->filled('status')) {
-
-            $query->where(
-                'status',
-                $request->status
-            );
+            $orders->where('status', $request->status);
         }
 
-        $perPage = $request->integer(
-            'per_page',
-            15
-        );
+        if ($request->filled('payment_status')) {
+            $orders->where('payment_status', $request->payment_status);
+        }
 
-        return $query
-            ->latest()
-            ->paginate($perPage);
+        if ($request->filled('date_from')) {
+            $orders->whereDate('placed_at', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $orders->whereDate('placed_at', '<=', $request->date_to);
+        }
+
+        $sortable = [
+            'order_number',
+            'placed_at',
+            'total',
+            'payment_status',
+            'status'
+        ];
+        $sortBy = in_array($request->sort_by, $sortable)
+            ? $request->sort_by
+            : 'placed_at';
+        $sortOrder = strtolower($request->sort_order) === 'asc'
+            ? 'asc'
+            : 'desc';
+
+        return $orders
+            ->orderBy($sortBy, $sortOrder)
+            ->paginate($request->per_page ?? 10);
     }
 
     /**
@@ -253,6 +262,7 @@ class OrderController extends Controller
             'customer',
             'address',
             'coupon',
+            'rider',
             'items.product',
             'items.variant',
         ]);
@@ -389,6 +399,57 @@ class OrderController extends Controller
         ]);
     }
 
+    public function updatePaymentStatus(
+        UpdateOrderPaymentRequest $request,
+        Order $order
+    ) {
+        $currentStatus = $order->payment_status;
+
+        $allowedTransitions = [
+
+            'pending' => [
+                'paid',
+                'failed'
+            ],
+
+            'paid' => [
+                'refunded'
+            ],
+
+            'failed' => [
+                'pending'
+            ],
+
+            'refunded' => []
+
+        ];
+
+        $newStatus = $request->payment_status;
+
+        if (
+            ! in_array(
+                $newStatus,
+                $allowedTransitions[$currentStatus]
+            )
+        ) {
+            return response()->json([
+                'message' =>
+                "Cannot change payment status from {$currentStatus} to {$newStatus}"
+            ], 422);
+        }
+
+        $order->payment_status = $newStatus;
+
+        $order->save();
+
+        return $order->load([
+            'customer',
+            'address',
+            'items.product',
+            'items.variant'
+        ]);
+    }
+
     public function timeline(Order $order)
     {
         return response()->json([
@@ -436,26 +497,6 @@ class OrderController extends Controller
                     'timestamp' => $order->cancelled_at,
                 ],
             ],
-        ]);
-    }
-
-    public function verifyPayment(
-        VerifyPaymentRequest $request,
-        Order $order
-    ) {
-
-        $order->update([
-
-            'payment_status' => $request->status,
-
-            'payment_verified_at' => now(),
-
-            'payment_verified_by' => request()->user()?->id,
-        ]);
-
-        return response()->json([
-            'message' => 'Payment verified successfully',
-            'order' => $order,
         ]);
     }
 }

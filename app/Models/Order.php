@@ -18,8 +18,6 @@ class Order extends Model
         'payment_status',
         'transaction_id',
         'payment_receipt',
-        'payment_verified_at',
-        'payment_verified_by',
         'subtotal',
         'delivery_fee',
         'discount',
@@ -67,13 +65,5 @@ class Order extends Model
     public function rider()
     {
         return $this->belongsTo(Rider::class);
-    }
-
-    public function verifiedBy()
-    {
-        return $this->belongsTo(
-            User::class,
-            'payment_verified_by'
-        );
     }
 }

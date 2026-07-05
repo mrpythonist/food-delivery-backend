@@ -60,8 +60,6 @@ class RiderController extends Controller
 
         $order->update([
             'rider_id' => $request->rider_id,
-            'status' => 'picked_up',
-            'picked_up_at' => now(),
         ]);
 
         RiderAssigned::dispatch($order);
@@ -69,9 +67,35 @@ class RiderController extends Controller
         return $order->load(['rider', 'customer', 'items']);
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        return Rider::latest()->paginate();
+        $query = Rider::query();
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->has('is_online')) {
+            $query->where(
+                'is_online',
+                filter_var($request->is_online, FILTER_VALIDATE_BOOLEAN)
+            );
+        }
+
+        if ($request->has('is_available')) {
+            $query->where(
+                'is_available',
+                filter_var($request->is_available, FILTER_VALIDATE_BOOLEAN)
+            );
+        }
+
+        return $query
+            ->latest()
+            ->paginate($request->integer('per_page', 15));
     }
 
     public function store(RiderRequest $request)

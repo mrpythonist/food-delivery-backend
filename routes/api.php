@@ -18,6 +18,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
+Route::middleware('auth:sanctum')->post(
+    '/logout',
+    [AuthController::class, 'logout']
+);
 Route::post('/upload', [UploadController::class, 'store']);
 Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
     return $request->user();
@@ -90,6 +94,11 @@ Route::middleware('auth:sanctum')->group(function () {
         [OrderController::class, 'updateStatus']
     );
 
+    Route::patch(
+        '/orders/{order}/payment',
+        [OrderController::class, 'updatePaymentStatus']
+    );
+
     Route::prefix('cart')->group(function () {
 
         Route::get('/', [CartController::class, 'show']);
@@ -102,9 +111,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::delete('/clear', [CartController::class, 'clear']);
 
-        Route::post(
-            '/apply-coupon',
-            [CouponController::class, 'apply']
+        Route::get('/abandoned', [CartController::class, 'index']);
+
+        Route::post('/apply-coupon', [CouponController::class, 'apply']
+
         );
     });
 
@@ -180,9 +190,4 @@ Route::middleware('auth:sanctum')->group(function () {
         '/settings',
         [SettingController::class, 'update']
     );
-
-    Route::patch(
-    '/orders/{order}/verify-payment',
-    [OrderController::class, 'verifyPayment']
-);
 });
