@@ -2,40 +2,39 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Customer;
 use App\Models\Address;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AddressRequest;
 
 class AddressController extends Controller
 {
-    public function index()
+    public function index(Customer $customer)
     {
-        return Address::with('customer')
-            ->latest()
-            ->paginate(20);
+        return $customer->addresses()->latest()->paginate(20);
     }
 
-    public function store(AddressRequest $request)
+    public function store(AddressRequest $request, Customer $customer)
     {
-        $address = Address::create(
+        $address = $customer->addresses()->create(
             $request->validated()
         );
 
-        return response()->json(
-            $address,
-            201
-        );
+        return response()->json($address, 201);
     }
 
-    public function show(Address $address)
+    public function show(Customer $customer, Address $address)
     {
-        return $address->load('customer');
+
+        return $address;
     }
 
     public function update(
         AddressRequest $request,
+        Customer $customer,
         Address $address
     ) {
+
         $address->update(
             $request->validated()
         );
@@ -43,8 +42,11 @@ class AddressController extends Controller
         return $address->fresh();
     }
 
-    public function destroy(Address $address)
-    {
+    public function destroy(
+        Customer $customer,
+        Address $address
+    ) {
+
         $address->delete();
 
         return response()->json([

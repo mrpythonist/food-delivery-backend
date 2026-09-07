@@ -49,10 +49,8 @@ Route::middleware('auth:sanctum')->group(function () {
         CustomerController::class
     );
 
-    Route::apiResource(
-        'addresses',
-        AddressController::class
-    );
+    Route::apiResource('customers.addresses', AddressController::class)
+    ->scoped();
 
     Route::apiResource(
         'orders',
@@ -99,23 +97,14 @@ Route::middleware('auth:sanctum')->group(function () {
         [OrderController::class, 'updatePaymentStatus']
     );
 
-    Route::prefix('cart')->group(function () {
-
-        Route::get('/', [CartController::class, 'show']);
-
-        Route::post('/add', [CartController::class, 'add']);
-
-        Route::post('/update', [CartController::class, 'update']);
-
-        Route::post('/remove', [CartController::class, 'remove']);
-
-        Route::delete('/clear', [CartController::class, 'clear']);
-
+    Route::prefix('carts')->group(function () {
+        Route::get('/{customer}', [CartController::class, 'show']);
+        Route::post('/{customer}/items', [CartController::class, 'add']);
+        Route::patch('/items/{cartItem}', [CartController::class, 'update']);
+        Route::delete('/items/{cartItem}', [CartController::class, 'remove']);
+        Route::delete('/{customer}', [CartController::class, 'clear']);
         Route::get('/abandoned', [CartController::class, 'index']);
-
-        Route::post('/apply-coupon', [CouponController::class, 'apply']
-
-        );
+        Route::post('/{customer}/coupon', [CouponController::class, 'apply']);
     });
 
     Route::apiResource(

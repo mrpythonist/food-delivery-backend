@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Coupon;
 use App\Models\Cart;
+use App\Models\Coupon;
+use App\Models\Customer;
 use App\Http\Requests\CouponRequest;
 use App\Http\Requests\ApplyCouponRequest;
 
@@ -50,12 +51,9 @@ class CouponController extends Controller
         ]);
     }
 
-    public function apply(ApplyCouponRequest $request)
+    public function apply(ApplyCouponRequest $request, int $customer)
     {
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'code' => 'required|string',
-        ]);
+        Customer::findOrFail($customer);
 
         $coupon = Coupon::where(
             'code',
@@ -66,7 +64,7 @@ class CouponController extends Controller
 
         if (!$coupon) {
             return response()->json([
-                'message' => 'Invalid coupon'
+                'message' => 'Invalid coupon',
             ], 422);
         }
 
@@ -75,53 +73,42 @@ class CouponController extends Controller
             $coupon->expires_at->isPast()
         ) {
             return response()->json([
-                'message' => 'Coupon expired'
+                'message' => 'Coupon expired',
             ], 422);
         }
 
         $cart = Cart::with('items')
-            ->where(
-                'customer_id',
-                $request->customer_id
-            )
+            ->where('customer_id', $customer)
             ->first();
 
         if (!$cart) {
             return response()->json([
-                'message' => 'Cart not found'
+                'message' => 'Cart not found',
             ], 404);
         }
 
-        $subtotal = $cart->items
-            ->sum('total_price');
+        $subtotal = $cart->items->sum('total_price');
 
         if (
             $coupon->minimum_order &&
             $subtotal < $coupon->minimum_order
         ) {
             return response()->json([
-                'message' => 'Minimum order not reached'
+                'message' => 'Minimum order not reached',
             ], 422);
         }
 
-        $discount =
-            $coupon->type === 'percentage'
+        $discount = $coupon->type === 'percentage'
             ? ($subtotal * $coupon->value / 100)
             : $coupon->value;
 
-        $discount = min(
-            $discount,
-            $subtotal
-        );
+        $discount = min($discount, $subtotal);
 
         return response()->json([
             'coupon' => $coupon,
             'subtotal' => $subtotal,
             'discount' => round($discount, 2),
-            'total' => round(
-                $subtotal - $discount,
-                2
-            ),
+            'total' => round($subtotal - $discount, 2),
         ]);
     }
 }

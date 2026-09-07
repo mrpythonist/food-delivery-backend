@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\ProductVariant;
+use App\Models\Customer;
 use Illuminate\Http\Request;
 
 class CartController extends Controller
@@ -20,19 +21,19 @@ class CartController extends Controller
 
         return $carts;
     }
-    public function show(Request $request)
+    public function show(int $customer)
     {
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-        ]);
+        Customer::findOrFail($customer);
 
         $cart = Cart::with([
+            'items' => function ($query) {
+                $query->orderBy('created_at');
+            },
             'items.product',
-            'items.variant'
-        ])
-            ->firstOrCreate([
-                'customer_id' => $request->customer_id
-            ]);
+            'items.variant',
+        ])->firstOrCreate([
+            'customer_id' => $customer,
+        ]);
 
         return response()->json([
             'cart' => $cart,
@@ -41,24 +42,23 @@ class CartController extends Controller
         ]);
     }
 
-    public function add(Request $request)
+    public function add(Request $request, int $customer)
     {
         $request->validate([
-            'customer_id' => 'required|exists:customers,id',
             'product_id' => 'required|exists:products,id',
             'product_variant_id' => 'required|exists:product_variants,id',
             'quantity' => 'required|integer|min:1',
         ]);
 
         $cart = Cart::firstOrCreate([
-            'customer_id' => $request->customer_id
+            'customer_id' => $customer,
         ]);
 
         $variant = ProductVariant::findOrFail(
             $request->product_variant_id
         );
 
-        $item = CartItem::where('cart_id', $cart->id)
+        $item = $cart->items()
             ->where('product_id', $request->product_id)
             ->where('product_variant_id', $request->product_variant_id)
             ->first();
@@ -84,69 +84,42 @@ class CartController extends Controller
             ]);
         }
 
-        return $this->show(new Request([
-            'customer_id' => $request->customer_id
-        ]));
+        return $this->show($customer);
     }
 
-    public function update(Request $request)
+    public function update(Request $request, CartItem $cartItem)
     {
         $request->validate([
-            'cart_item_id' => 'required|exists:cart_items,id',
             'quantity' => 'required|integer|min:1',
         ]);
 
-        $item = CartItem::findOrFail(
-            $request->cart_item_id
-        );
+        $cartItem->quantity = $request->quantity;
 
-        $item->quantity = $request->quantity;
-
-        $item->total_price =
-            $item->unit_price *
+        $cartItem->total_price =
+            $cartItem->unit_price *
             $request->quantity;
 
-        $item->save();
+        $cartItem->save();
 
-        $cart = Cart::findOrFail(
-            $item->cart_id
-        );
+        $cart = $cartItem->cart;
 
-        return $this->show(new Request([
-            'customer_id' => $cart->customer_id
-        ]));
+        return $this->show($cart->customer_id);
     }
 
-    public function remove(Request $request)
+    public function remove(CartItem $cartItem)
     {
-        $request->validate([
-            'cart_item_id' => 'required|exists:cart_items,id',
-        ]);
+        $cart = $cartItem->cart;
 
-        $item = CartItem::findOrFail(
-            $request->cart_item_id
-        );
+        $cartItem->delete();
 
-        $cart = Cart::findOrFail(
-            $item->cart_id
-        );
-
-        $item->delete();
-
-        return $this->show(new Request([
-            'customer_id' => $cart->customer_id
-        ]));
+        return $this->show($cart->customer_id);
     }
 
-    public function clear(Request $request)
+    public function clear(int $customer)
     {
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-        ]);
-
         $cart = Cart::where(
             'customer_id',
-            $request->customer_id
+            $customer
         )->first();
 
         if ($cart) {
